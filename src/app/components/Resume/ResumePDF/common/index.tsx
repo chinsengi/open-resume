@@ -3,6 +3,8 @@ import type { Style } from "@react-pdf/types";
 import { styles, spacing } from "components/Resume/ResumePDF/styles";
 import { DEBUG_RESUME_PDF_FLAG } from "lib/constants";
 import { DEFAULT_FONT_COLOR } from "lib/redux/settingsSlice";
+import { parseMarkdown } from "lib/parseMarkdown";
+import { usePDFMode } from "components/Resume/ResumePDF/PDFModeContext";
 
 export const ResumePDFSection = ({
   themeColor,
@@ -76,6 +78,69 @@ export const ResumePDFText = ({
   );
 };
 
+/**
+ * Renders markdown-formatted text with support for **bold**, *italic*, and [links](url).
+ */
+export const ResumePDFMarkdownText = ({
+  children,
+  style = {},
+}: {
+  children: string;
+  style?: Style;
+}) => {
+  const isPDF = usePDFMode();
+  const tokens = parseMarkdown(children);
+
+  return (
+    <Text
+      style={{
+        color: DEFAULT_FONT_COLOR,
+        ...style,
+      }}
+      debug={DEBUG_RESUME_PDF_FLAG}
+    >
+      {tokens.map((token, idx) => {
+        switch (token.type) {
+          case "bold":
+            return (
+              <Text key={idx} style={{ fontWeight: "bold" }}>
+                {token.content}
+              </Text>
+            );
+          case "italic":
+            return (
+              <Text key={idx} style={{ fontStyle: "italic" }}>
+                {token.content}
+              </Text>
+            );
+          case "link":
+            if (isPDF) {
+              return (
+                <Link key={idx} src={token.url} style={{ color: "#0066cc", textDecoration: "underline" }}>
+                  {token.content}
+                </Link>
+              );
+            }
+            return (
+              <a
+                key={idx}
+                href={token.url}
+                style={{ color: "#0066cc", textDecoration: "underline" }}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {token.content}
+              </a>
+            );
+          default:
+            return <Text key={idx}>{token.content}</Text>;
+        }
+      })}
+    </Text>
+  );
+};
+
+
 export const ResumePDFBulletList = ({
   items,
   showBulletPoints = true,
@@ -101,11 +166,11 @@ export const ResumePDFBulletList = ({
           )}
           {/* A breaking change was introduced causing text layout to be wider than node's width
               https://github.com/diegomura/react-pdf/issues/2182. flexGrow & flexBasis fixes it */}
-          <ResumePDFText
+          <ResumePDFMarkdownText
             style={{ lineHeight: "1.3", flexGrow: 1, flexBasis: 0 }}
           >
             {item}
-          </ResumePDFText>
+          </ResumePDFMarkdownText>
         </View>
       ))}
     </>

@@ -10,6 +10,7 @@ import { DEFAULT_FONT_COLOR } from "lib/redux/settingsSlice";
 import type { Settings, ShowForm } from "lib/redux/settingsSlice";
 import type { Resume } from "lib/redux/types";
 import { SuppressResumePDFErrorMessage } from "components/Resume/ResumePDF/common/SuppressResumePDFErrorMessage";
+import { PDFModeContext } from "components/Resume/ResumePDF/PDFModeContext";
 
 /**
  * Note: ResumePDF is supposed to be rendered inside PDFViewer. However,
@@ -93,7 +94,7 @@ export const ResumePDF = ({
   };
 
   return (
-    <>
+    <PDFModeContext.Provider value={isPDF}>
       <Document title={`${name} Resume`} author={name} producer={"OpenResume"}>
         <Page
           size={documentSize === "A4" ? "A4" : "LETTER"}
@@ -136,6 +137,6 @@ export const ResumePDF = ({
         </Page>
       </Document>
       <SuppressResumePDFErrorMessage />
-    </>
+    </PDFModeContext.Provider>
   );
 };
