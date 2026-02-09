@@ -19,7 +19,7 @@ export const ResumePDFProject = ({
   return (
     <ResumePDFSection themeColor={themeColor} heading={heading}>
       {projects.map(({ project, date, descriptions }, idx) => (
-        <View key={idx}>
+        <View key={idx} style={{ marginTop: idx > 0 ? spacing["2"] : 0 }}>
           <View
             style={{
               ...styles.flexRowBetween,

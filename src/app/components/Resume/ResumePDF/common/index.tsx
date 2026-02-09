@@ -86,7 +86,7 @@ export const ResumePDFBulletList = ({
   return (
     <>
       {items.map((item, idx) => (
-        <View style={{ ...styles.flexRow }} key={idx}>
+        <View style={{ ...styles.flexRow }} key={idx} wrap={false}>
           {showBulletPoints && (
             <ResumePDFText
               style={{

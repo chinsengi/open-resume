@@ -28,7 +28,7 @@ export const ResumePDFEducation = ({
           const showDescriptions = descriptions.join() !== "";
 
           return (
-            <View key={idx}>
+            <View key={idx} style={idx !== 0 ? { marginTop: spacing["2"] } : {}}>
               {!hideSchoolName && (
                 <ResumePDFText bold={true}>{school}</ResumePDFText>
               )}
@@ -40,11 +40,10 @@ export const ResumePDFEducation = ({
                     : spacing["1.5"],
                 }}
               >
-                <ResumePDFText>{`${
-                  gpa
-                    ? `${degree} - ${Number(gpa) ? gpa + " GPA" : gpa}`
-                    : degree
-                }`}</ResumePDFText>
+                <ResumePDFText>{`${gpa
+                  ? `${degree} - ${Number(gpa) ? gpa + " GPA" : gpa}`
+                  : degree
+                  }`}</ResumePDFText>
                 <ResumePDFText>{date}</ResumePDFText>
               </View>
               {showDescriptions && (
