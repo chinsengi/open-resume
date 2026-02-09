@@ -1,5 +1,5 @@
 "use client";
-import { useMemo } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import Frame from "react-frame-component";
 import {
   A4_HEIGHT_PX,
@@ -42,7 +42,7 @@ const getIframeInitialContent = (isA4: boolean) => {
       ${allFontFamiliesFontFaces}
     </style>
   </head>
-  <body style='overflow: hidden; width: ${width}pt; margin: 0; padding: 0; -webkit-text-size-adjust:none;'>
+  <body style='overflow: visible; width: ${width}pt; margin: 0; padding: 0; -webkit-text-size-adjust:none;'>
     <div></div>
   </body>
 </html>`;
@@ -68,6 +68,40 @@ const ResumeIframe = ({
     () => getIframeInitialContent(isA4),
     [isA4]
   );
+  const [contentHeight, setContentHeight] = useState<number | null>(null);
+  const frameRef = useRef<HTMLIFrameElement>(null);
+
+  // Observe iframe content height changes
+  useEffect(() => {
+    const checkHeight = () => {
+      const iframe = frameRef.current;
+      if (iframe?.contentDocument?.body) {
+        const newHeight = iframe.contentDocument.body.scrollHeight;
+        setContentHeight(newHeight);
+      }
+    };
+
+    // Check height periodically and on mutations
+    const interval = setInterval(checkHeight, 100);
+
+    // Also set up a MutationObserver for more responsive updates
+    const iframe = frameRef.current;
+    let observer: MutationObserver | null = null;
+
+    if (iframe?.contentDocument?.body) {
+      observer = new MutationObserver(checkHeight);
+      observer.observe(iframe.contentDocument.body, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+    }
+
+    return () => {
+      clearInterval(interval);
+      observer?.disconnect();
+    };
+  }, [children]);
 
   if (enablePDFViewer) {
     return (
@@ -78,12 +112,13 @@ const ResumeIframe = ({
   }
   const width = isA4 ? A4_WIDTH_PX : LETTER_WIDTH_PX;
   const height = isA4 ? A4_HEIGHT_PX : LETTER_HEIGHT_PX;
+  // Use content height if available, otherwise default to one page height
+  const actualHeight = contentHeight ? Math.max(height, contentHeight) : height;
 
   return (
     <div
       style={{
         maxWidth: `${width * scale}px`,
-        maxHeight: `${height * scale}px`,
       }}
     >
       {/* There is an outer div and an inner div here. The inner div sets the iframe width and uses transform scale to zoom in/out the resume iframe.
@@ -92,12 +127,14 @@ const ResumeIframe = ({
       <div
         style={{
           width: `${width}px`,
-          height: `${height}px`,
+          height: `${actualHeight}px`,
           transform: `scale(${scale})`,
+          transformOrigin: "top left",
         }}
-        className={`origin-top-left bg-white shadow-lg`}
+        className={`bg-white shadow-lg`}
       >
         <Frame
+          ref={frameRef}
           style={{ width: "100%", height: "100%" }}
           initialContent={iframeInitialContent}
           // key is used to force component to re-mount when document size changes
