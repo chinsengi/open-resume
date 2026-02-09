@@ -3,6 +3,7 @@ import {
   ResumePDFSection,
   ResumePDFBulletList,
   ResumePDFText,
+  ResumePDFMarkdownText,
 } from "components/Resume/ResumePDF/common";
 import { styles, spacing } from "components/Resume/ResumePDF/styles";
 import type { ResumeWorkExperience } from "lib/redux/types";
@@ -26,7 +27,7 @@ export const ResumePDFWorkExperience = ({
         return (
           <View key={idx} style={idx !== 0 ? { marginTop: spacing["2"] } : {}}>
             {!hideCompanyName && (
-              <ResumePDFText bold={true}>{company}</ResumePDFText>
+              <ResumePDFMarkdownText style={{ fontWeight: "bold" }}>{company}</ResumePDFMarkdownText>
             )}
             <View
               style={{

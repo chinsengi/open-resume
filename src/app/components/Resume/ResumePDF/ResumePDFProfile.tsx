@@ -8,6 +8,7 @@ import {
   ResumePDFLink,
   ResumePDFSection,
   ResumePDFText,
+  ResumePDFMarkdownText,
 } from "components/Resume/ResumePDF/common";
 import type { ResumeProfile } from "lib/redux/types";
 
@@ -32,7 +33,7 @@ export const ResumePDFProfile = ({
       >
         {name}
       </ResumePDFText>
-      {summary && <ResumePDFText>{summary}</ResumePDFText>}
+      {summary && <ResumePDFMarkdownText>{summary}</ResumePDFMarkdownText>}
       <View
         style={{
           ...styles.flexRowBetween,
