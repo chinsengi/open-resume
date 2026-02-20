@@ -1,9 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // @react-pdf/renderer v4 is a pure ESM package — transpile it so webpack can bundle it
+  // @react-pdf/renderer v4 is a pure ESM package — transpile it so webpack can bundle it
+  transpilePackages: ["@react-pdf/renderer"],
   // Nextjs has an issue with pdfjs-dist which optionally uses the canvas package
   // for Node.js compatibility. This causes a "Module parse failed" error when
   // building the app. Since pdfjs-dist is only used on client side, we disable
-  // the canvas package for webpack
+  // the canvas package for webpack and turbopack
   // https://github.com/mozilla/pdf.js/issues/16214
   output: 'standalone',
   webpack: (config) => {

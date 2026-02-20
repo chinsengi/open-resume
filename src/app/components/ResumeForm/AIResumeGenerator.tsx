@@ -44,59 +44,122 @@ const LoadingSpinner = () => (
     </svg>
 );
 
+type RevisionStage = "idle" | "loading1" | "done1" | "loading2" | "done2" | "loading3" | "done3";
+
 export const AIResumeGenerator = () => {
     const dispatch = useAppDispatch();
     const currentResume = useAppSelector(selectResume);
 
     const [jobDescription, setJobDescription] = useState("");
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [success, setSuccess] = useState(false);
     const [isExpanded, setIsExpanded] = useState(false);
-    const [useExistingResume, setUseExistingResume] = useState(true);
+
+    // Revision state
+    const [revisionStage, setRevisionStage] = useState<RevisionStage>("idle");
+    const [matchScore, setMatchScore] = useState<number | null>(null);
+    const [missingKeywords, setMissingKeywords] = useState<string[]>([]);
+    const [revisionError, setRevisionError] = useState<string | null>(null);
+    const [originalResume, setOriginalResume] = useState<Resume | null>(null);
 
     const hasExistingContent = currentResume.profile.name !== "";
 
-    const generateResume = useCallback(async () => {
-        if (!jobDescription.trim()) {
-            setError("Please paste a job description first.");
-            return;
-        }
-
-        setIsLoading(true);
-        setError(null);
-        setSuccess(false);
-
+    const runStage1 = useCallback(async () => {
+        if (!originalResume) setOriginalResume(currentResume);
+        setRevisionStage("loading1");
+        setRevisionError(null);
         try {
-            const body: { jobDescription: string; currentResume?: Resume } = {
-                jobDescription: jobDescription.trim(),
-            };
-
-            if (useExistingResume && hasExistingContent) {
-                body.currentResume = currentResume;
-            }
-
-            const response = await fetch("/api/generate-resume", {
+            const response = await fetch("/api/revise-resume", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body),
+                body: JSON.stringify({
+                    stage: 1,
+                    jobDescription: jobDescription.trim(),
+                    resume: currentResume,
+                }),
             });
-
             const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.error || "Failed to generate resume.");
-            }
-
-            dispatch(setResume(data.resume));
-            setSuccess(true);
-            setTimeout(() => setSuccess(false), 5000);
+            if (!response.ok) throw new Error(data.error || "Stage 1 failed.");
+            setMatchScore(data.score);
+            setMissingKeywords(data.missingKeywords);
+            setRevisionStage("done1");
         } catch (err: any) {
-            setError(err.message || "An unexpected error occurred.");
-        } finally {
-            setIsLoading(false);
+            setRevisionError(err.message || "An unexpected error occurred.");
+            setRevisionStage("idle");
         }
-    }, [jobDescription, useExistingResume, hasExistingContent, currentResume, dispatch]);
+    }, [jobDescription, currentResume, originalResume]);
+
+    const runStage2 = useCallback(async () => {
+        setRevisionStage("loading2");
+        setRevisionError(null);
+        try {
+            const response = await fetch("/api/revise-resume", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    stage: 2,
+                    jobDescription: jobDescription.trim(),
+                    resume: currentResume,
+                    missingKeywords,
+                }),
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || "Stage 2 failed.");
+            dispatch(setResume({ ...currentResume, workExperiences: data.workExperiences }));
+            setRevisionStage("done2");
+        } catch (err: any) {
+            setRevisionError(err.message || "An unexpected error occurred.");
+            setRevisionStage("done1");
+        }
+    }, [jobDescription, currentResume, missingKeywords, dispatch]);
+
+    const runStage3 = useCallback(async () => {
+        setRevisionStage("loading3");
+        setRevisionError(null);
+        try {
+            const response = await fetch("/api/revise-resume", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    stage: 3,
+                    resume: currentResume,
+                }),
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || "Stage 3 failed.");
+            dispatch(setResume(data.resume));
+            setRevisionStage("done3");
+        } catch (err: any) {
+            setRevisionError(err.message || "An unexpected error occurred.");
+            setRevisionStage("done2");
+        }
+    }, [currentResume, dispatch]);
+
+    const revertToOriginal = useCallback(() => {
+        if (originalResume) {
+            dispatch(setResume(originalResume));
+            setOriginalResume(null);
+            setRevisionStage("idle");
+            setMatchScore(null);
+            setMissingKeywords([]);
+            setRevisionError(null);
+        }
+    }, [originalResume, dispatch]);
+
+    const scoreColor =
+        matchScore === null
+            ? ""
+            : matchScore >= 80
+                ? "text-green-700 bg-green-100 border-green-300"
+                : matchScore >= 60
+                    ? "text-yellow-700 bg-yellow-100 border-yellow-300"
+                    : "text-red-700 bg-red-100 border-red-300";
+
+    const showRevisionSection =
+        hasExistingContent && jobDescription.trim().length > 0;
+
+    const isRevising =
+        revisionStage === "loading1" ||
+        revisionStage === "loading2" ||
+        revisionStage === "loading3";
 
     return (
         <div className="rounded-md border border-purple-200 bg-gradient-to-r from-purple-50 to-blue-50">
@@ -159,90 +222,179 @@ export const AIResumeGenerator = () => {
                             value={jobDescription}
                             onChange={(e) => {
                                 setJobDescription(e.target.value);
-                                setError(null);
+                                setOriginalResume(null);
+                                // Reset revision state when JD changes
+                                setRevisionStage("idle");
+                                setMatchScore(null);
+                                setMissingKeywords([]);
+                                setRevisionError(null);
                             }}
                             maxLength={10000}
-                            disabled={isLoading}
+                            disabled={isRevising}
                         />
                     </div>
 
-                    {/* Enhance Mode Toggle */}
-                    {hasExistingContent && (
-                        <div className="flex items-center gap-2">
-                            <input
-                                type="checkbox"
-                                id="use-existing-resume"
-                                checked={useExistingResume}
-                                onChange={(e) => setUseExistingResume(e.target.checked)}
-                                className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                                disabled={isLoading}
-                            />
-                            <label
-                                htmlFor="use-existing-resume"
-                                className="text-sm text-gray-600"
-                            >
-                                Use my existing resume as a base (enhance mode)
-                            </label>
-                        </div>
-                    )}
-
-                    {/* Error Message */}
-                    {error && (
-                        <div className="rounded-md bg-red-50 p-3">
-                            <p className="text-sm text-red-700">{error}</p>
-                        </div>
-                    )}
-
-                    {/* Success Message */}
-                    {success && (
-                        <div className="rounded-md bg-green-50 p-3">
-                            <p className="text-sm text-green-700">
-                                ✨ Resume generated successfully! Review the updated content below.
+                    {/* ── AI Resume Revision Section ── */}
+                    {showRevisionSection && (
+                        <div className="mt-2 space-y-3 border-t border-purple-200 pt-4">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-sm font-semibold text-purple-900">
+                                    AI Resume Revision
+                                </h3>
+                                {originalResume !== null && (
+                                    <button
+                                        type="button"
+                                        onClick={revertToOriginal}
+                                        className="rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
+                                    >
+                                        Revert to Original
+                                    </button>
+                                )}
+                            </div>
+                            <p className="text-xs text-gray-500">
+                                Run three targeted AI passes to score, rewrite, and ATS-optimize your resume.
                             </p>
-                        </div>
-                    )}
 
-                    {/* Action Buttons */}
-                    <div className="flex gap-2">
-                        <button
-                            type="button"
-                            onClick={generateResume}
-                            disabled={isLoading || !jobDescription.trim()}
-                            className="flex items-center gap-2 rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                            {isLoading ? (
-                                <>
-                                    <LoadingSpinner />
-                                    Generating...
-                                </>
-                            ) : (
-                                <>
-                                    <SparklesIcon />
-                                    Generate AI Resume
-                                </>
+                            {/* Revision error */}
+                            {revisionError && (
+                                <div className="rounded-md bg-red-50 p-3">
+                                    <p className="text-sm text-red-700">{revisionError}</p>
+                                </div>
                             )}
-                        </button>
 
-                        {jobDescription && !isLoading && (
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setJobDescription("");
-                                    setError(null);
-                                    setSuccess(false);
-                                }}
-                                className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
-                            >
-                                Clear
-                            </button>
-                        )}
-                    </div>
+                            {/* Stage 1 */}
+                            <div className="space-y-2">
+                                <button
+                                    type="button"
+                                    onClick={runStage1}
+                                    disabled={
+                                        isRevising ||
+                                        revisionStage === "done1" ||
+                                        revisionStage === "done2" ||
+                                        revisionStage === "done3"
+                                    }
+                                    className="flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    {revisionStage === "loading1" ? (
+                                        <>
+                                            <LoadingSpinner />
+                                            Analyzing match...
+                                        </>
+                                    ) : (
+                                        "Stage 1: Analyze Match"
+                                    )}
+                                </button>
 
-                    {isLoading && (
-                        <p className="text-xs text-gray-500">
-                            This may take 10-30 seconds. The AI is crafting your tailored
-                            resume...
-                        </p>
+                                {/* Stage 1 result */}
+                                {(revisionStage === "done1" ||
+                                    revisionStage === "loading2" ||
+                                    revisionStage === "done2" ||
+                                    revisionStage === "loading3" ||
+                                    revisionStage === "done3") &&
+                                    matchScore !== null && (
+                                        <div className="space-y-2 pl-1">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm text-gray-600">Match Score:</span>
+                                                <span
+                                                    className={`inline-flex items-center rounded-full border px-3 py-0.5 text-sm font-semibold ${scoreColor}`}
+                                                >
+                                                    {matchScore} / 100
+                                                </span>
+                                            </div>
+                                            {missingKeywords.length > 0 && (
+                                                <div className="flex flex-wrap items-center gap-1">
+                                                    <span className="text-sm text-gray-600">Missing:</span>
+                                                    {missingKeywords.map((kw) => (
+                                                        <span
+                                                            key={kw}
+                                                            className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700"
+                                                        >
+                                                            {kw}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                            </div>
+
+                            {/* Stage 2 */}
+                            {(revisionStage === "done1" ||
+                                revisionStage === "loading2" ||
+                                revisionStage === "done2" ||
+                                revisionStage === "loading3" ||
+                                revisionStage === "done3") && (
+                                    <div className="space-y-2">
+                                        <button
+                                            type="button"
+                                            onClick={runStage2}
+                                            disabled={
+                                                isRevising ||
+                                                revisionStage === "done2" ||
+                                                revisionStage === "done3"
+                                            }
+                                            className="flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        >
+                                            {revisionStage === "loading2" ? (
+                                                <>
+                                                    <LoadingSpinner />
+                                                    Rewriting experience...
+                                                </>
+                                            ) : (
+                                                "Stage 2: Rewrite Experience"
+                                            )}
+                                        </button>
+
+                                        {/* Stage 2 result */}
+                                        {(revisionStage === "done2" ||
+                                            revisionStage === "loading3" ||
+                                            revisionStage === "done3") && (
+                                                <p className="pl-1 text-sm text-green-700">
+                                                    ✓ Experience section rewritten with XYZ formula and keywords.
+                                                </p>
+                                            )}
+                                    </div>
+                                )}
+
+                            {/* Stage 3 */}
+                            {(revisionStage === "done2" ||
+                                revisionStage === "loading3" ||
+                                revisionStage === "done3") && (
+                                    <div className="space-y-2">
+                                        <button
+                                            type="button"
+                                            onClick={runStage3}
+                                            disabled={
+                                                isRevising ||
+                                                revisionStage === "done3"
+                                            }
+                                            className="flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        >
+                                            {revisionStage === "loading3" ? (
+                                                <>
+                                                    <LoadingSpinner />
+                                                    Scanning for ATS issues...
+                                                </>
+                                            ) : (
+                                                "Stage 3: ATS Scan & Fix"
+                                            )}
+                                        </button>
+
+                                        {/* Stage 3 result */}
+                                        {revisionStage === "done3" && (
+                                            <p className="pl-1 text-sm text-green-700">
+                                                ✓ ATS improvements applied. Your resume is fully optimized.
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+
+                            {isRevising && (
+                                <p className="text-xs text-gray-500">
+                                    This may take 10-30 seconds...
+                                </p>
+                            )}
+                        </div>
                     )}
                 </div>
             )}

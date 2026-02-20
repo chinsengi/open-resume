@@ -6,9 +6,10 @@
  */
 if (typeof window !== "undefined" && window.location.hostname === "localhost") {
   const consoleError = console.error;
-  const SUPPRESSED_WARNINGS = ["DOCUMENT", "PAGE", "TEXT", "VIEW"];
+  const SUPPRESSED_WARNINGS = ["DOCUMENT", "PAGE", "TEXT", "VIEW", "wrap"];
   console.error = function filterWarnings(msg, ...args) {
-    if (!SUPPRESSED_WARNINGS.some((entry) => args[0]?.includes(entry))) {
+    const allStrings = [msg, ...args].filter((x): x is string => typeof x === "string");
+    if (!SUPPRESSED_WARNINGS.some((entry) => allStrings.some((s) => s.includes(entry)))) {
       consoleError(msg, ...args);
     }
   };

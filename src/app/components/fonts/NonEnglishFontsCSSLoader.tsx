@@ -1,3 +1,4 @@
+"use client";
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { getAllFontFamiliesToLoad } from "components/fonts/lib";

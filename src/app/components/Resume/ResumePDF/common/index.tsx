@@ -148,6 +148,10 @@ export const ResumePDFBulletList = ({
   items: string[];
   showBulletPoints?: boolean;
 }) => {
+  const isPDF = usePDFMode();
+  // react-pdf's PDF layout engine produces more leading than the browser DOM
+  // preview for the same lineHeight value, so use a tighter value for PDF.
+  const lineHeight = isPDF ? "0.8" : "1.15";
   return (
     <>
       {items.map((item, idx) => (
@@ -157,7 +161,7 @@ export const ResumePDFBulletList = ({
               style={{
                 paddingLeft: spacing["2"],
                 paddingRight: spacing["2"],
-                lineHeight: "1.3",
+                lineHeight,
               }}
               bold={true}
             >
@@ -167,7 +171,7 @@ export const ResumePDFBulletList = ({
           {/* A breaking change was introduced causing text layout to be wider than node's width
               https://github.com/diegomura/react-pdf/issues/2182. flexGrow & flexBasis fixes it */}
           <ResumePDFMarkdownText
-            style={{ lineHeight: "1.3", flexGrow: 1, flexBasis: 0 }}
+            style={{ lineHeight, flexGrow: 1, flexBasis: 0 }}
           >
             {item}
           </ResumePDFMarkdownText>
@@ -231,7 +235,7 @@ export const ResumeFeaturedSkill = ({
             width: "9pt",
             marginLeft: "2.25pt",
             backgroundColor: rating >= idx ? themeColor : "#d9d9d9",
-            borderRadius: "100%",
+            borderRadius: "4.5pt",
           }}
         />
       ))}

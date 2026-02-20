@@ -1,10 +1,3 @@
-// Getting pdfjs to work is tricky. The following 3 lines would make it work
-// https://stackoverflow.com/a/63486898/7699841
-import * as pdfjs from "pdfjs-dist";
-// @ts-ignore
-import pdfjsWorker from "pdfjs-dist/build/pdf.worker.entry";
-pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
-
 import type { TextItem as PdfjsTextItem } from "pdfjs-dist/types/src/display/api";
 import type { TextItem, TextItems } from "lib/parse-resume-from-pdf/types";
 
@@ -22,6 +15,16 @@ import type { TextItem, TextItems } from "lib/parse-resume-from-pdf/types";
  * }
  */
 export const readPdf = async (fileUrl: string): Promise<TextItems> => {
+  // Load pdfjs-dist from the public directory via a native browser import.
+  // pdf.min.mjs is itself a pre-built webpack bundle — letting Next.js webpack
+  // re-bundle it causes a nested webpack runtime conflict ("Object.defineProperty
+  // called on non-object"). /* webpackIgnore: true */ bypasses webpack entirely
+  // so the browser fetches the file directly as a native ESM module.
+  // The files are copied to public/pdfjs/ by the postinstall script.
+  // @ts-ignore: path resolved from public/pdfjs/ at runtime, not a TS module
+  const pdfjs: typeof import("pdfjs-dist") = await import(/* webpackIgnore: true */ "/pdfjs/pdf.min.mjs");
+  pdfjs.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs";
+
   const pdfFile = await pdfjs.getDocument(fileUrl).promise;
   let textItems: TextItems = [];
 
@@ -54,7 +57,7 @@ export const readPdf = async (fileUrl: string): Promise<TextItems> => {
       // since non system font name by default is a loaded name, e.g. "g_d8_f1"
       // Reference: https://github.com/mozilla/pdf.js/pull/15659
       const fontObj = commonObjs.get(pdfFontName);
-      const fontName = fontObj.name;
+      const fontName = fontObj?.name ?? pdfFontName;
 
       // pdfjs reads a "-" as "-­‐" in the resume example. This is to revert it.
       // Note "-­‐" is "-&#x00AD;‐" with a soft hyphen in between. It is not the same as "--"
