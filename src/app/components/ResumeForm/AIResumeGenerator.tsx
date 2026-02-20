@@ -60,6 +60,12 @@ export const AIResumeGenerator = () => {
     const [revisionError, setRevisionError] = useState<string | null>(null);
     const [originalResume, setOriginalResume] = useState<Resume | null>(null);
 
+    // Custom instruction state
+    const [customInstruction, setCustomInstruction] = useState("");
+    const [isApplyingCustom, setIsApplyingCustom] = useState(false);
+    const [customError, setCustomError] = useState<string | null>(null);
+    const [customSuccess, setCustomSuccess] = useState(false);
+
     const hasExistingContent = currentResume.profile.name !== "";
 
     const runStage1 = useCallback(async () => {
@@ -143,6 +149,35 @@ export const AIResumeGenerator = () => {
             setRevisionError(null);
         }
     }, [originalResume, dispatch]);
+
+    const runCustom = useCallback(async () => {
+        if (!originalResume) setOriginalResume(currentResume);
+        setIsApplyingCustom(true);
+        setCustomError(null);
+        setCustomSuccess(false);
+        try {
+            const response = await fetch("/api/revise-resume", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    stage: 4,
+                    resume: currentResume,
+                    jobDescription: jobDescription.trim(),
+                    instruction: customInstruction.trim(),
+                }),
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || "Custom instruction failed.");
+            dispatch(setResume(data.resume));
+            setCustomSuccess(true);
+            setCustomInstruction("");
+            setTimeout(() => setCustomSuccess(false), 4000);
+        } catch (err: any) {
+            setCustomError(err.message || "An unexpected error occurred.");
+        } finally {
+            setIsApplyingCustom(false);
+        }
+    }, [currentResume, jobDescription, customInstruction, originalResume, dispatch]);
 
     const scoreColor =
         matchScore === null
@@ -394,6 +429,44 @@ export const AIResumeGenerator = () => {
                                     This may take 10-30 seconds...
                                 </p>
                             )}
+
+                            {/* Custom Instructions */}
+                            <div className="space-y-2 border-t border-purple-200 pt-3">
+                                <h4 className="text-sm font-semibold text-purple-900">
+                                    Custom Instructions
+                                </h4>
+                                <textarea
+                                    rows={3}
+                                    className="w-full rounded-md border border-gray-300 p-3 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                    placeholder="e.g. Make my summary more concise, add Python to skills, shorten the first job's bullets..."
+                                    value={customInstruction}
+                                    onChange={(e) => setCustomInstruction(e.target.value)}
+                                    disabled={isApplyingCustom || isRevising}
+                                />
+                                <div className="flex items-center justify-end gap-3">
+                                    {customSuccess && (
+                                        <p className="text-sm text-green-700">✓ Changes applied.</p>
+                                    )}
+                                    {customError && (
+                                        <p className="text-sm text-red-700">{customError}</p>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={runCustom}
+                                        disabled={isApplyingCustom || !customInstruction.trim() || isRevising}
+                                        className="flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        {isApplyingCustom ? (
+                                            <>
+                                                <LoadingSpinner />
+                                                Applying...
+                                            </>
+                                        ) : (
+                                            "Apply Instructions"
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>

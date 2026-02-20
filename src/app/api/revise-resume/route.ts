@@ -27,6 +27,7 @@ Rules:
 - Every bullet point must follow the XYZ structure (quantified achievement + metric + method)
 - Missing keywords must appear organically, not forced
 - Preserve all company names, job titles, and dates exactly as given
+- Job titles are LOCKED. Output the `jobTitle` field character-for-character as it appears in the input. Do not reword, abbreviate, expand, or reformat it under any circumstances.
 - Return the same number of work experiences as the original
 - NEVER invent facts. Do not fabricate companies, job titles, technologies, tools, or metrics that are not present in the candidate's original descriptions.
 - Metrics: Only use numbers or metrics that already appear in the original bullet point. If no metric exists, describe the achievement qualitatively (e.g., "significantly reduced…") rather than inventing a percentage or number.
@@ -56,6 +57,7 @@ Review the resume for ATS compatibility issues and rewrite it for maximum machin
 - Ensure bullet points start with strong action verbs
 - Keep descriptions clear and scannable
 - Preserve all facts exactly. Every company, job title, date, school, degree, project, and skill must be carried over verbatim from the input.
+- Job titles are LOCKED. Output each `jobTitle` field character-for-character as it appears in the input resume. Do not alter job titles for any reason, including ATS optimization.
 - Do not add new skills, technologies, or experiences that are not already present in the resume.
 - Only improve phrasing and formatting for ATS readability — do not invent new content.
 - If a section is already ATS-friendly, reproduce it as-is.
@@ -110,6 +112,15 @@ You MUST respond with a valid JSON object matching this exact structure:
     "descriptions": []
   }
 }`;
+
+const STAGE4_SYSTEM_PROMPT = `You are a professional resume editor. Apply the user's specific instruction to the resume exactly as requested.
+
+Rules:
+- Make only the changes described in the instruction. Leave everything else untouched.
+- Job titles are LOCKED — never alter them.
+- NEVER invent facts, companies, technologies, metrics, or experiences not already in the resume.
+- Preserve all bold markdown (**text**) unless the instruction explicitly asks to change formatting.
+- Return the complete resume as a valid JSON object with the same structure as the input.`;
 
 function makeOpenAI() {
     return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -244,6 +255,55 @@ async function runStage3(openai: OpenAI, resume: Resume): Promise<NextResponse> 
     return NextResponse.json({ resume: parsed });
 }
 
+async function runStage4(
+    openai: OpenAI,
+    resume: Resume,
+    jobDescription: string,
+    instruction: string
+): Promise<NextResponse> {
+    const userPrompt = `Job Description (for context):\n---\n${jobDescription}\n---\n\nInstruction: ${instruction}\n\nResume:\n${JSON.stringify(resume, null, 2)}`;
+
+    const completion = await openai.chat.completions.create({
+        model: getModel(),
+        messages: [
+            { role: "system", content: STAGE4_SYSTEM_PROMPT },
+            { role: "user", content: userPrompt },
+        ],
+        temperature: 0.3,
+        response_format: { type: "json_object" },
+    });
+
+    const content = completion.choices[0]?.message?.content;
+    if (!content) {
+        return NextResponse.json(
+            { error: "No response received from AI. Please try again." },
+            { status: 500 }
+        );
+    }
+
+    const parsed = JSON.parse(content) as Resume;
+
+    if (!parsed.profile || !parsed.workExperiences || !parsed.educations || !parsed.skills) {
+        return NextResponse.json(
+            { error: "AI generated an incomplete resume. Please try again." },
+            { status: 500 }
+        );
+    }
+
+    // Normalize featuredSkills to exactly 6 entries
+    if (parsed.skills.featuredSkills) {
+        while (parsed.skills.featuredSkills.length < 6) {
+            parsed.skills.featuredSkills.push({ skill: "", rating: 4 });
+        }
+        parsed.skills.featuredSkills = parsed.skills.featuredSkills.slice(0, 6);
+    }
+
+    if (!parsed.custom) parsed.custom = { descriptions: [] };
+    if (!parsed.projects) parsed.projects = [];
+
+    return NextResponse.json({ resume: parsed });
+}
+
 export async function POST(request: Request) {
     try {
         if (!process.env.OPENAI_API_KEY) {
@@ -257,11 +317,11 @@ export async function POST(request: Request) {
         }
 
         const body = await request.json();
-        const { stage, jobDescription, resume, missingKeywords } = body;
+        const { stage, jobDescription, resume, missingKeywords, instruction } = body;
 
-        if (!stage || ![1, 2, 3].includes(stage)) {
+        if (!stage || ![1, 2, 3, 4].includes(stage)) {
             return NextResponse.json(
-                { error: "Invalid stage. Must be 1, 2, or 3." },
+                { error: "Invalid stage. Must be 1, 2, 3, or 4." },
                 { status: 400 }
             );
         }
@@ -273,7 +333,7 @@ export async function POST(request: Request) {
             );
         }
 
-        if (stage !== 3 && (!jobDescription || typeof jobDescription !== "string")) {
+        if (stage !== 3 && stage !== 4 && (!jobDescription || typeof jobDescription !== "string")) {
             return NextResponse.json(
                 { error: "Job description is required for stages 1 and 2." },
                 { status: 400 }
@@ -294,6 +354,16 @@ export async function POST(request: Request) {
                 );
             }
             return runStage2(openai, jobDescription, resume, missingKeywords);
+        }
+
+        if (stage === 4) {
+            if (!instruction || typeof instruction !== "string") {
+                return NextResponse.json(
+                    { error: "instruction string is required for stage 4." },
+                    { status: 400 }
+                );
+            }
+            return runStage4(openai, resume, jobDescription || "", instruction);
         }
 
         return runStage3(openai, resume);
