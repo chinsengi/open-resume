@@ -140,6 +140,9 @@ export const FormSection = ({
   showMoveDown,
   showDelete,
   deleteButtonTooltipText,
+  showHide,
+  isHidden,
+  onHideToggle,
   children,
 }: {
   form: ShowForm;
@@ -148,6 +151,9 @@ export const FormSection = ({
   showMoveDown: boolean;
   showDelete: boolean;
   deleteButtonTooltipText: string;
+  showHide?: boolean;
+  isHidden?: boolean;
+  onHideToggle?: () => void;
   children: React.ReactNode;
 }) => {
   const dispatch = useAppDispatch();
@@ -163,9 +169,12 @@ export const FormSection = ({
       {idx !== 0 && (
         <div className="mb-4 mt-6 border-t-2 border-dotted border-gray-200" />
       )}
-      <div className="relative grid grid-cols-6 gap-3">
+      <div className={`relative grid grid-cols-6 gap-3 transition-opacity duration-200 ${isHidden ? "opacity-40" : ""}`}>
         {children}
         <div className={`absolute right-0 top-0 flex gap-0.5 `}>
+          {showHide && (
+            <ShowIconButton show={!isHidden} setShow={() => onHideToggle?.()} size="small" />
+          )}
           <div
             className={`transition-all duration-300 ${
               showMoveUp ? "" : "invisible opacity-0"

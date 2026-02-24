@@ -57,6 +57,7 @@ export const AIResumeGenerator = () => {
     const [revisionStage, setRevisionStage] = useState<RevisionStage>("idle");
     const [matchScore, setMatchScore] = useState<number | null>(null);
     const [missingKeywords, setMissingKeywords] = useState<string[]>([]);
+    const [selectedKeywords, setSelectedKeywords] = useState<Set<string>>(new Set());
     const [revisionError, setRevisionError] = useState<string | null>(null);
     const [originalResume, setOriginalResume] = useState<Resume | null>(null);
 
@@ -67,6 +68,11 @@ export const AIResumeGenerator = () => {
     const [customSuccess, setCustomSuccess] = useState(false);
 
     const hasExistingContent = currentResume.profile.name !== "";
+
+    const visibleResume = {
+        ...currentResume,
+        projects: currentResume.projects.filter(p => !p.hidden),
+    };
 
     const runStage1 = useCallback(async () => {
         if (!originalResume) setOriginalResume(currentResume);
@@ -79,19 +85,20 @@ export const AIResumeGenerator = () => {
                 body: JSON.stringify({
                     stage: 1,
                     jobDescription: jobDescription.trim(),
-                    resume: currentResume,
+                    resume: visibleResume,
                 }),
             });
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || "Stage 1 failed.");
             setMatchScore(data.score);
             setMissingKeywords(data.missingKeywords);
+            setSelectedKeywords(new Set(data.missingKeywords));
             setRevisionStage("done1");
         } catch (err: any) {
             setRevisionError(err.message || "An unexpected error occurred.");
             setRevisionStage("idle");
         }
-    }, [jobDescription, currentResume, originalResume]);
+    }, [jobDescription, visibleResume, originalResume]);
 
     const runStage2 = useCallback(async () => {
         setRevisionStage("loading2");
@@ -103,8 +110,8 @@ export const AIResumeGenerator = () => {
                 body: JSON.stringify({
                     stage: 2,
                     jobDescription: jobDescription.trim(),
-                    resume: currentResume,
-                    missingKeywords,
+                    resume: visibleResume,
+                    missingKeywords: Array.from(selectedKeywords),
                 }),
             });
             const data = await response.json();
@@ -115,7 +122,7 @@ export const AIResumeGenerator = () => {
             setRevisionError(err.message || "An unexpected error occurred.");
             setRevisionStage("done1");
         }
-    }, [jobDescription, currentResume, missingKeywords, dispatch]);
+    }, [jobDescription, visibleResume, selectedKeywords, dispatch]);
 
     const runStage3 = useCallback(async () => {
         setRevisionStage("loading3");
@@ -126,18 +133,23 @@ export const AIResumeGenerator = () => {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     stage: 3,
-                    resume: currentResume,
+                    jobDescription: jobDescription.trim(),
+                    resume: visibleResume,
                 }),
             });
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || "Stage 3 failed.");
-            dispatch(setResume(data.resume));
+            const hiddenProjects = currentResume.projects.filter(p => p.hidden);
+            dispatch(setResume({
+                ...data.resume,
+                projects: [...data.resume.projects, ...hiddenProjects],
+            }));
             setRevisionStage("done3");
         } catch (err: any) {
             setRevisionError(err.message || "An unexpected error occurred.");
             setRevisionStage("done2");
         }
-    }, [currentResume, dispatch]);
+    }, [jobDescription, visibleResume, dispatch]);
 
     const revertToOriginal = useCallback(() => {
         if (originalResume) {
@@ -146,9 +158,18 @@ export const AIResumeGenerator = () => {
             setRevisionStage("idle");
             setMatchScore(null);
             setMissingKeywords([]);
+            setSelectedKeywords(new Set());
             setRevisionError(null);
         }
     }, [originalResume, dispatch]);
+
+    const toggleKeyword = (kw: string) => {
+        setSelectedKeywords(prev => {
+            const next = new Set(prev);
+            next.has(kw) ? next.delete(kw) : next.add(kw);
+            return next;
+        });
+    };
 
     const runCustom = useCallback(async () => {
         if (!originalResume) setOriginalResume(currentResume);
@@ -161,14 +182,18 @@ export const AIResumeGenerator = () => {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     stage: 4,
-                    resume: currentResume,
+                    resume: visibleResume,
                     jobDescription: jobDescription.trim(),
                     instruction: customInstruction.trim(),
                 }),
             });
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || "Custom instruction failed.");
-            dispatch(setResume(data.resume));
+            const hiddenProjects = currentResume.projects.filter(p => p.hidden);
+            dispatch(setResume({
+                ...data.resume,
+                projects: [...data.resume.projects, ...hiddenProjects],
+            }));
             setCustomSuccess(true);
             setCustomInstruction("");
             setTimeout(() => setCustomSuccess(false), 4000);
@@ -177,7 +202,7 @@ export const AIResumeGenerator = () => {
         } finally {
             setIsApplyingCustom(false);
         }
-    }, [currentResume, jobDescription, customInstruction, originalResume, dispatch]);
+    }, [visibleResume, jobDescription, customInstruction, originalResume, dispatch]);
 
     const scoreColor =
         matchScore === null
@@ -262,6 +287,7 @@ export const AIResumeGenerator = () => {
                                 setRevisionStage("idle");
                                 setMatchScore(null);
                                 setMissingKeywords([]);
+                                setSelectedKeywords(new Set());
                                 setRevisionError(null);
                             }}
                             maxLength={10000}
@@ -302,12 +328,7 @@ export const AIResumeGenerator = () => {
                                 <button
                                     type="button"
                                     onClick={runStage1}
-                                    disabled={
-                                        isRevising ||
-                                        revisionStage === "done1" ||
-                                        revisionStage === "done2" ||
-                                        revisionStage === "done3"
-                                    }
+                                    disabled={isRevising}
                                     className="flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                     {revisionStage === "loading1" ? (
@@ -337,16 +358,30 @@ export const AIResumeGenerator = () => {
                                                 </span>
                                             </div>
                                             {missingKeywords.length > 0 && (
-                                                <div className="flex flex-wrap items-center gap-1">
-                                                    <span className="text-sm text-gray-600">Missing:</span>
-                                                    {missingKeywords.map((kw) => (
-                                                        <span
-                                                            key={kw}
-                                                            className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700"
-                                                        >
-                                                            {kw}
-                                                        </span>
-                                                    ))}
+                                                <div className="space-y-1.5">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-sm text-gray-600">Missing keywords:</span>
+                                                        <span className="text-xs text-gray-400">(click to deselect)</span>
+                                                    </div>
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {missingKeywords.map((kw) => {
+                                                            const isSelected = selectedKeywords.has(kw);
+                                                            return (
+                                                                <button
+                                                                    key={kw}
+                                                                    type="button"
+                                                                    onClick={() => toggleKeyword(kw)}
+                                                                    className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium transition-all ${
+                                                                        isSelected
+                                                                            ? "bg-indigo-100 text-indigo-800 border-indigo-300 ring-1 ring-indigo-400"
+                                                                            : "bg-gray-100 text-gray-400 border-gray-200 line-through"
+                                                                    }`}
+                                                                >
+                                                                    {kw}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
@@ -363,11 +398,8 @@ export const AIResumeGenerator = () => {
                                         <button
                                             type="button"
                                             onClick={runStage2}
-                                            disabled={
-                                                isRevising ||
-                                                revisionStage === "done2" ||
-                                                revisionStage === "done3"
-                                            }
+                                            disabled={isRevising || selectedKeywords.size === 0}
+                                            title={selectedKeywords.size === 0 ? "Select at least one keyword to proceed" : undefined}
                                             className="flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         >
                                             {revisionStage === "loading2" ? (
@@ -399,10 +431,7 @@ export const AIResumeGenerator = () => {
                                         <button
                                             type="button"
                                             onClick={runStage3}
-                                            disabled={
-                                                isRevising ||
-                                                revisionStage === "done3"
-                                            }
+                                            disabled={isRevising}
                                             className="flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         >
                                             {revisionStage === "loading3" ? (
@@ -430,42 +459,56 @@ export const AIResumeGenerator = () => {
                                 </p>
                             )}
 
-                            {/* Custom Instructions */}
-                            <div className="space-y-2 border-t border-purple-200 pt-3">
+                        </div>
+                    )}
+
+                    {/* Custom Instructions — always visible when resume has content */}
+                    {hasExistingContent && (
+                        <div className="space-y-2 border-t border-purple-200 pt-3">
+                            <div className="flex items-center justify-between">
                                 <h4 className="text-sm font-semibold text-purple-900">
                                     Custom Instructions
                                 </h4>
-                                <textarea
-                                    rows={3}
-                                    className="w-full rounded-md border border-gray-300 p-3 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
-                                    placeholder="e.g. Make my summary more concise, add Python to skills, shorten the first job's bullets..."
-                                    value={customInstruction}
-                                    onChange={(e) => setCustomInstruction(e.target.value)}
-                                    disabled={isApplyingCustom || isRevising}
-                                />
-                                <div className="flex items-center justify-end gap-3">
-                                    {customSuccess && (
-                                        <p className="text-sm text-green-700">✓ Changes applied.</p>
-                                    )}
-                                    {customError && (
-                                        <p className="text-sm text-red-700">{customError}</p>
-                                    )}
+                                {originalResume !== null && !showRevisionSection && (
                                     <button
                                         type="button"
-                                        onClick={runCustom}
-                                        disabled={isApplyingCustom || !customInstruction.trim() || isRevising}
-                                        className="flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        onClick={revertToOriginal}
+                                        className="rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
                                     >
-                                        {isApplyingCustom ? (
-                                            <>
-                                                <LoadingSpinner />
-                                                Applying...
-                                            </>
-                                        ) : (
-                                            "Apply Instructions"
-                                        )}
+                                        Revert to Original
                                     </button>
-                                </div>
+                                )}
+                            </div>
+                            <textarea
+                                rows={3}
+                                className="w-full rounded-md border border-gray-300 p-3 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                placeholder="e.g. Make my summary more concise, add Python to skills, shorten the first job's bullets..."
+                                value={customInstruction}
+                                onChange={(e) => setCustomInstruction(e.target.value)}
+                                disabled={isApplyingCustom || isRevising}
+                            />
+                            <div className="flex items-center justify-end gap-3">
+                                {customSuccess && (
+                                    <p className="text-sm text-green-700">✓ Changes applied.</p>
+                                )}
+                                {customError && (
+                                    <p className="text-sm text-red-700">{customError}</p>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={runCustom}
+                                    disabled={isApplyingCustom || !customInstruction.trim() || isRevising}
+                                    className="flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    {isApplyingCustom ? (
+                                        <>
+                                            <LoadingSpinner />
+                                            Applying...
+                                        </>
+                                    ) : (
+                                        "Apply Instructions"
+                                    )}
+                                </button>
                             </div>
                         </div>
                     )}

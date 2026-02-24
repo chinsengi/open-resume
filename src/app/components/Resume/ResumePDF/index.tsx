@@ -71,7 +71,7 @@ export const ResumePDF = ({
     projects: () => (
       <ResumePDFProject
         heading={formToHeading["projects"]}
-        projects={projects}
+        projects={projects.filter((p) => !p.hidden)}
         themeColor={themeColor}
       />
     ),

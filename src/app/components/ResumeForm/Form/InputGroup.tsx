@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import ContentEditable from "react-contenteditable";
 import { useAutosizeTextareaHeight } from "lib/hooks/useAutosizeTextareaHeight";
 
@@ -121,7 +121,24 @@ const BulletListTextareaGeneral = <T extends string>({
   onChange,
   showBulletPoints = true,
 }: InputProps<T, string[]> & { showBulletPoints?: boolean }) => {
-  const html = getHTMLFromBulletListStrings(bulletListStrings);
+  const [html, setHtml] = useState(() =>
+    getHTMLFromBulletListStrings(bulletListStrings)
+  );
+  // Tracks whether the last bulletListStrings change came from the user
+  // typing (true) or an external source like an AI stage (false).
+  const isUserEdit = useRef(false);
+
+  useEffect(() => {
+    if (isUserEdit.current) {
+      // Change originated from user typing — html is already correct,
+      // skip to avoid resetting the DOM (which would move the cursor).
+      isUserEdit.current = false;
+      return;
+    }
+    // External change (AI result, revert, import) — update the editor.
+    setHtml(getHTMLFromBulletListStrings(bulletListStrings));
+  }, [bulletListStrings]);
+
   return (
     <InputGroupWrapper label={label} className={wrapperClassName}>
       <ContentEditable
@@ -133,10 +150,13 @@ const BulletListTextareaGeneral = <T extends string>({
         placeholder={placeholder}
         onChange={(e) => {
           if (e.type === "input") {
-            const { innerText } = e.currentTarget as HTMLDivElement;
-            const newBulletListStrings =
-              getBulletListStringsFromInnerText(innerText);
-            onChange(name, newBulletListStrings);
+            const el = e.currentTarget as HTMLDivElement;
+            isUserEdit.current = true;
+            // Store the real innerHTML so the next render passes back exactly
+            // what the DOM already contains — ContentEditable then skips the
+            // innerHTML reset, keeping cursor position and undo history intact.
+            setHtml(el.innerHTML);
+            onChange(name, getBulletListStringsFromInnerText(el.innerText));
           }
         }}
         html={html}

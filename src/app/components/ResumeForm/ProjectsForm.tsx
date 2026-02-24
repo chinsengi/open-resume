@@ -15,7 +15,7 @@ export const ProjectsForm = () => {
 
   return (
     <Form form="projects" addButtonText="Add Project">
-      {projects.map(({ project, date, descriptions }, idx) => {
+      {projects.map(({ project, date, descriptions, hidden }, idx) => {
         const handleProjectChange = (
           ...[
             field,
@@ -36,6 +36,9 @@ export const ProjectsForm = () => {
             showMoveDown={showMoveDown}
             showDelete={showDelete}
             deleteButtonTooltipText={"Delete project"}
+            showHide={true}
+            isHidden={!!hidden}
+            onHideToggle={() => dispatch(changeProjects({ idx, field: "hidden", value: !hidden } as any))}
           >
             <Input
               name="project"

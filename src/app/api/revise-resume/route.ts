@@ -9,7 +9,7 @@ Compare the provided resume against the job description and identify gaps.
 You MUST respond with this exact JSON structure:
 {
   "score": <integer 0-100 representing overall match>,
-  "missingKeywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"]
+  "missingKeywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5", "keyword6", "keyword7", "keyword8", "keyword9", "keyword10"]
 }
 
 Scoring guidelines:
@@ -17,7 +17,7 @@ Scoring guidelines:
 - 60-79: Moderate match, several key skills missing
 - 0-59: Weak match, major gaps in required qualifications
 
-The missingKeywords array must contain exactly 5 items: the most important skills, technologies, or qualifications from the job description that are absent or underrepresented in the resume.`;
+The missingKeywords array must contain exactly 10 items: the most important skills, technologies, or qualifications from the job description that are absent or underrepresented in the resume.`;
 
 const STAGE2_SYSTEM_PROMPT = `You are an expert resume writer specializing in the XYZ achievement formula: "Accomplished X, as measured by Y, by doing Z."
 
@@ -25,13 +25,13 @@ Rewrite the work experience section of the resume using the XYZ formula for ever
 
 Rules:
 - Every bullet point must follow the XYZ structure (quantified achievement + metric + method)
-- Missing keywords must appear organically, not forced
+- Translate the candidate's real work into the employer's language — use a keyword only where it accurately names what the candidate actually did
 - Preserve all company names, job titles, and dates exactly as given
-- Job titles are LOCKED. Output the `jobTitle` field character-for-character as it appears in the input. Do not reword, abbreviate, expand, or reformat it under any circumstances.
+- Job titles are LOCKED. Output the \`jobTitle\` field character-for-character as it appears in the input. Do not reword, abbreviate, expand, or reformat it under any circumstances.
 - Return the same number of work experiences as the original
 - NEVER invent facts. Do not fabricate companies, job titles, technologies, tools, or metrics that are not present in the candidate's original descriptions.
 - Metrics: Only use numbers or metrics that already appear in the original bullet point. If no metric exists, describe the achievement qualitatively (e.g., "significantly reduced…") rather than inventing a percentage or number.
-- Missing keywords: Only incorporate a missing keyword if the candidate genuinely worked with that technology or concept based on their existing descriptions. It is better to skip a keyword than to falsely claim experience.
+- Missing keywords: A keyword is a label for real work, not decoration. Include it only when the candidate's original descriptions show they did that work — possibly under a different name or tool. Ask: "did they actually do this?" If yes, use the employer's term. If no credible basis exists, skip it entirely. Keyword stuffing is detectable and harmful; a resume with 3 accurately placed keywords outperforms one with 10 stuffed ones. Never add a keyword just to hit coverage.
 - Rewrite, don't reinvent: Restructure and strengthen existing bullet points using the XYZ formula — the underlying facts must remain true to the original.
 - Bold formatting: Use **bold** (markdown double-asterisks) to highlight the most impactful parts of each bullet — specifically: quantified metrics and results (e.g., **40%**, **$2M**, **3x faster**), and the most important incorporated keywords. Bold only the highest-signal words or phrases per bullet; do not over-bold.
 
@@ -57,10 +57,11 @@ Review the resume for ATS compatibility issues and rewrite it for maximum machin
 - Ensure bullet points start with strong action verbs
 - Keep descriptions clear and scannable
 - Preserve all facts exactly. Every company, job title, date, school, degree, project, and skill must be carried over verbatim from the input.
-- Job titles are LOCKED. Output each `jobTitle` field character-for-character as it appears in the input resume. Do not alter job titles for any reason, including ATS optimization.
-- Do not add new skills, technologies, or experiences that are not already present in the resume.
+- Job titles are LOCKED. Output each \`jobTitle\` field character-for-character as it appears in the input resume. Do not alter job titles for any reason, including ATS optimization.
+- Do not add new skills, technologies, or work experiences that are not already present in the resume.
 - Only improve phrasing and formatting for ATS readability — do not invent new content.
 - If a section is already ATS-friendly, reproduce it as-is.
+- You MAY add up to 3 new projects if the job description calls for project-type work and the candidate's existing experience clearly implies they did that work. New projects must be grounded in the resume — do not invent project names, technologies, or metrics not implied by the existing content. A job description will be provided when available.
 - Bold formatting: Use **bold** (markdown double-asterisks) across ALL description fields in every section to highlight the highest-impact words and phrases a recruiter's eye should land on. Apply bold to: key technical skills and tools (e.g., **React**, **Kubernetes**), quantified results (e.g., **50% reduction**, **$1.2M**), publication titles and venue names in the custom section (e.g., **"Attention Is All You Need"**, **NeurIPS 2023**), notable awards or honors in education descriptions, and 1-2 critical qualifications in the profile summary. Preserve any existing bold from prior stages. Do not bold generic words like "team", "project", or "experience".
 
 You MUST respond with a valid JSON object matching this exact structure:
@@ -118,7 +119,7 @@ const STAGE4_SYSTEM_PROMPT = `You are a professional resume editor. Apply the us
 Rules:
 - Make only the changes described in the instruction. Leave everything else untouched.
 - Job titles are LOCKED — never alter them.
-- NEVER invent facts, companies, technologies, metrics, or experiences not already in the resume.
+- NEVER invent facts, companies, technologies, metrics, or experiences not already in the resume. Exception: if the user's instruction explicitly provides project details to add (name, tech, description), add them exactly as specified — user-supplied project details are authoritative input.
 - Preserve all bold markdown (**text**) unless the instruction explicitly asks to change formatting.
 - Return the complete resume as a valid JSON object with the same structure as the input.`;
 
@@ -169,7 +170,7 @@ async function runStage1(
 
     return NextResponse.json({
         score: Math.round(Math.max(0, Math.min(100, parsed.score))),
-        missingKeywords: parsed.missingKeywords.slice(0, 5),
+        missingKeywords: parsed.missingKeywords.slice(0, 10),
     });
 }
 
@@ -211,8 +212,11 @@ async function runStage2(
     return NextResponse.json({ workExperiences: parsed.workExperiences });
 }
 
-async function runStage3(openai: OpenAI, resume: Resume): Promise<NextResponse> {
-    const userPrompt = `Here is the resume to optimize for ATS compatibility:\n\n${JSON.stringify(resume, null, 2)}`;
+async function runStage3(openai: OpenAI, resume: Resume, jobDescription?: string): Promise<NextResponse> {
+    const jdBlock = jobDescription
+        ? `Job Description (for context):\n---\n${jobDescription}\n---\n\n`
+        : "";
+    const userPrompt = `${jdBlock}Here is the resume to optimize for ATS compatibility:\n\n${JSON.stringify(resume, null, 2)}`;
 
     const completion = await openai.chat.completions.create({
         model: getModel(),
@@ -366,7 +370,7 @@ export async function POST(request: Request) {
             return runStage4(openai, resume, jobDescription || "", instruction);
         }
 
-        return runStage3(openai, resume);
+        return runStage3(openai, resume, jobDescription || "");
     } catch (error: any) {
         console.error("Resume revision error:", error);
 
