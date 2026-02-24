@@ -59,9 +59,9 @@ Review the resume for ATS compatibility issues and rewrite it for maximum machin
 - Preserve all facts exactly. Every company, job title, date, school, degree, project, and skill must be carried over verbatim from the input.
 - Job titles are LOCKED. Output each \`jobTitle\` field character-for-character as it appears in the input resume. Do not alter job titles for any reason, including ATS optimization.
 - Do not add new skills, technologies, or work experiences that are not already present in the resume.
+- Do not add, remove, split, or merge projects. Keep exactly the same projects with the same project names and dates.
 - Only improve phrasing and formatting for ATS readability — do not invent new content.
 - If a section is already ATS-friendly, reproduce it as-is.
-- You MAY add up to 3 new projects if the job description calls for project-type work and the candidate's existing experience clearly implies they did that work. New projects must be grounded in the resume — do not invent project names, technologies, or metrics not implied by the existing content. A job description will be provided when available.
 - Bold formatting: Use **bold** (markdown double-asterisks) across ALL description fields in every section to highlight the highest-impact words and phrases a recruiter's eye should land on. Apply bold to: key technical skills and tools (e.g., **React**, **Kubernetes**), quantified results (e.g., **50% reduction**, **$1.2M**), publication titles and venue names in the custom section (e.g., **"Attention Is All You Need"**, **NeurIPS 2023**), notable awards or honors in education descriptions, and 1-2 critical qualifications in the profile summary. Preserve any existing bold from prior stages. Do not bold generic words like "team", "project", or "experience".
 
 You MUST respond with a valid JSON object matching this exact structure:
@@ -255,6 +255,21 @@ async function runStage3(openai: OpenAI, resume: Resume, jobDescription?: string
 
     if (!parsed.custom) parsed.custom = { descriptions: [] };
     if (!parsed.projects) parsed.projects = [];
+
+    // Stage 3 guardrail: do not allow new/deleted/renamed projects.
+    // Keep project identities (project + date) exactly as they were in input.
+    const parsedProjectByKey = new Map<string, Resume["projects"][number]>(
+        parsed.projects.map((p) => [`${p.project}|||${p.date}`, p] as const)
+    );
+    parsed.projects = resume.projects.map((originalProject) => {
+        const key = `${originalProject.project}|||${originalProject.date}`;
+        const rewrittenProject = parsedProjectByKey.get(key);
+        if (!rewrittenProject) return originalProject;
+        return {
+            ...originalProject,
+            descriptions: rewrittenProject.descriptions,
+        };
+    });
 
     return NextResponse.json({ resume: parsed });
 }
