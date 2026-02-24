@@ -38,7 +38,9 @@ export const ProjectsForm = () => {
             deleteButtonTooltipText={"Delete project"}
             showHide={true}
             isHidden={!!hidden}
-            onHideToggle={() => dispatch(changeProjects({ idx, field: "hidden", value: !hidden } as any))}
+            onHideToggle={() =>
+              dispatch(changeProjects({ idx, field: "hidden", value: !hidden }))
+            }
           >
             <Input
               name="project"

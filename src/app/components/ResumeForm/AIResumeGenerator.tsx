@@ -78,6 +78,9 @@ export const AIResumeGenerator = () => {
         if (!originalResume) setOriginalResume(currentResume);
         setRevisionStage("loading1");
         setRevisionError(null);
+        setMatchScore(null);
+        setMissingKeywords([]);
+        setSelectedKeywords(new Set());
         try {
             const response = await fetch("/api/revise-resume", {
                 method: "POST",
@@ -90,9 +93,21 @@ export const AIResumeGenerator = () => {
             });
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || "Stage 1 failed.");
+            const resumeText = JSON.stringify(visibleResume).toLowerCase();
+            const cleanedKeywords = Array.from(
+                new Set(
+                    (data.missingKeywords as string[])
+                        .map((kw) => kw.trim())
+                        .filter((kw) => kw.length > 0)
+                )
+            ).filter((kw) => {
+                const normalized = kw.toLowerCase();
+                if (normalized === "present") return false;
+                return !resumeText.includes(normalized);
+            });
             setMatchScore(data.score);
-            setMissingKeywords(data.missingKeywords);
-            setSelectedKeywords(new Set(data.missingKeywords));
+            setMissingKeywords(cleanedKeywords);
+            setSelectedKeywords(new Set());
             setRevisionStage("done1");
         } catch (err: any) {
             setRevisionError(err.message || "An unexpected error occurred.");
@@ -101,6 +116,10 @@ export const AIResumeGenerator = () => {
     }, [jobDescription, visibleResume, originalResume]);
 
     const runStage2 = useCallback(async () => {
+        if (selectedKeywords.size === 0) {
+            setRevisionStage("done2");
+            return;
+        }
         setRevisionStage("loading2");
         setRevisionError(null);
         try {
@@ -398,8 +417,12 @@ export const AIResumeGenerator = () => {
                                         <button
                                             type="button"
                                             onClick={runStage2}
-                                            disabled={isRevising || selectedKeywords.size === 0}
-                                            title={selectedKeywords.size === 0 ? "Select at least one keyword to proceed" : undefined}
+                                            disabled={isRevising}
+                                            title={
+                                                selectedKeywords.size === 0
+                                                    ? "No keywords selected. Click to skip to Stage 3."
+                                                    : undefined
+                                            }
                                             className="flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         >
                                             {revisionStage === "loading2" ? (
@@ -407,6 +430,8 @@ export const AIResumeGenerator = () => {
                                                     <LoadingSpinner />
                                                     Rewriting experience...
                                                 </>
+                                            ) : selectedKeywords.size === 0 ? (
+                                                "Skip Stage 2: Continue to ATS Scan"
                                             ) : (
                                                 "Stage 2: Rewrite Experience"
                                             )}

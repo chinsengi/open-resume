@@ -74,6 +74,14 @@ export type CreateChangeActionWithDescriptions<T> = {
   | { field: "descriptions"; value: string[] }
 );
 
+type ChangeProjectAction = {
+  idx: number;
+} & (
+  | { field: "project" | "date"; value: string }
+  | { field: "descriptions"; value: string[] }
+  | { field: "hidden"; value: boolean }
+);
+
 export const resumeSlice = createSlice({
   name: "resume",
   initialState: initialResumeState,
@@ -91,25 +99,51 @@ export const resumeSlice = createSlice({
         CreateChangeActionWithDescriptions<ResumeWorkExperience>
       >
     ) => {
-      const { idx, field, value } = action.payload;
-      const workExperience = draft.workExperiences[idx];
-      workExperience[field] = value as any;
+      const payload = action.payload;
+      const workExperience = draft.workExperiences[payload.idx];
+      if (payload.field === "descriptions") {
+        workExperience.descriptions = payload.value;
+      } else if (payload.field === "company") {
+        workExperience.company = payload.value;
+      } else if (payload.field === "jobTitle") {
+        workExperience.jobTitle = payload.value;
+      } else {
+        workExperience.date = payload.value;
+      }
     },
     changeEducations: (
       draft,
       action: PayloadAction<CreateChangeActionWithDescriptions<ResumeEducation>>
     ) => {
-      const { idx, field, value } = action.payload;
-      const education = draft.educations[idx];
-      education[field] = value as any;
+      const payload = action.payload;
+      const education = draft.educations[payload.idx];
+      if (payload.field === "descriptions") {
+        education.descriptions = payload.value;
+      } else if (payload.field === "school") {
+        education.school = payload.value;
+      } else if (payload.field === "degree") {
+        education.degree = payload.value;
+      } else if (payload.field === "gpa") {
+        education.gpa = payload.value;
+      } else {
+        education.date = payload.value;
+      }
     },
     changeProjects: (
       draft,
-      action: PayloadAction<CreateChangeActionWithDescriptions<ResumeProject>>
+      action: PayloadAction<ChangeProjectAction>
     ) => {
-      const { idx, field, value } = action.payload;
-      const project = draft.projects[idx];
-      project[field] = value as any;
+      const payload = action.payload;
+      const project = draft.projects[payload.idx];
+      if (payload.field === "descriptions") {
+        project.descriptions = payload.value;
+      } else if (payload.field === "project") {
+        project.project = payload.value;
+      } else if (payload.field === "hidden") {
+        project.hidden = payload.value;
+      } else {
+        project.date = payload.value;
+      }
     },
     changeSkills: (
       draft,
